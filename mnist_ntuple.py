@@ -1,15 +1,45 @@
-# mnist_ntuple.py
-#
-# Phil Dreizen
-# 
-# requires libraries: numpy, numba
-#
-# python3 mnist_ntuple.py train-images-idx3-ubyte train-labels-idx1-ubyte t10k-images-idx3-ubyte t10k-labels-idx1-ubyte
-#
-#
-# get the dataset here: http://yann.lecun.com/exdb/mnist/
+"""
+mnist_ntuple.py
+Author: Phil Dreizen
+requires libraries: numpy, numba
+
+Uses the N-tuple Classifier on MNIST handwritten digit data for classification. We print out a confusion matrix for the test data.
+The accuracy tends to be ~91%
+
+The N-tuple classifier works by using subclassifiers (called modules). 
+When training: 
+each module will sample the same random pixel positions from each image, 
+determining which of the pixels are "active" (have a value above a threshold).
+A table is used to keep track of the number of times each label was encountered for the active sampled pixels.
+
+When classifying an image:
+for each module, we sample the same pixel positions, 
+and we sum up the number of times we've seen each label for the active sample pixels. 
+The label with the highest count will be the label we choose.
+
+
+Get the dataset here: http://yann.lecun.com/exdb/mnist/
+
+USAGE:
+    #help:
+    $ python3 mnist_ntuple.py -h
+
+    #example usage:
+    $ python3 mnist_ntuple.py data/train-images-idx3-ubyte data/train-labels-idx1-ubyte data/t10k-images-idx3-ubyte data/t10k-labels-idx1-ubyte
+
+TODO: 
+    * The classifier is currently written for the MNIST data set. But it can easily be generalized to any data that can be quantized into 0/1, either by providing
+        it a quantize function, or requiring that the data provided is already quantized
+    * Before selecting random pixels to sample, we can examine the training data for pixel positions that are rarely "active" and exclude them from the modules
+    * I'm currently using a lot of memory to store the count information data. It might be worth switching to a dictionary. 
+        I don't think it will be much slower, but might save a lot of memory.
+    * Print out examples of images that were categorized incorrectly?
+"""
 
 import argparse 
+
+#numpy, and especially numba's JIT compilation, significantly speed up the code. 
+#(ie: On my computer, the code is 300x faster with JIT compiling)
 import numpy as np
 from numba import jit
 
@@ -19,39 +49,90 @@ from utils import eprint
 #number of labels (0-9)
 L = 10
 
-M = 500 #num modules
+M = 500 #num modules. Each module will sample pixels in the image data to predict the label
 N = 10  #num pixels sampled per module
+
+"""
+JIT: 
+Using numba's JIT makes the code much much faster
+But, numba's jit compiling cannot be applied to methods in classes. So the functions optimized with it are here, outside the classifying class
+"""
+
+@jit(nopython=True)
+def _update_tbl(img, label, idx, tbl):
+    """
+    update table counts
+
+    img: an np.array of pixel data. each pixel contains a value of 0-255
+    label: what number this image represents
+    idx: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
+    tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
+   
+    For each module,
+        we store which sample pixels are active in a bitvector integer variable, 
+        which we use, along with the module number, as a hash key into the table, 
+        and increment the number of times we've seen the given label by 1
+    """
+    for m in range(M):
+        h = 0 #bitvector of active pixels
+        for n in range(N):
+            h += (1 if img[idx[m][n]] >= 128 else 0) << n
+        tbl[m][h][label] += 1
+
 
 @jit(nopython=True)
 def _classify(img, idx, tbl):
+    """
+    classify an image (is it 0,1...9?)
+    
+    img: an np.array of pixel data. each pixel contains 0-255
+    idx: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
+    tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
+    returns: label with most "votes"
+    
+    Each module will "vote" for the labels it thinks the image belongs to, contributing higher mumbers to the labels it matched on more often.
+    
+    For each module, 
+        we store which sample pixels are active in a bitvector,
+        which we use as a hash key into the table,
+        we iterate over the 10 labels. the values stored are considered "votes" for the given label
+
+    The label with the most votes at the end will be the label returned
+
+    """
     votes = np.zeros(L)
     for m in range(M):
         h = 0
         for n in range(N):
-            h += (1 if img[idx[m][n]] >= 128 else 0) << n
+            h += (1 if img[idx[m][n]] >= 128 else 0) << n 
         
         for l in range(L):
             votes[l] += tbl[m][h][l]
     maxlabel = np.argmax(votes)
     return maxlabel
 
-@jit(nopython=True)
-def _update_tbl(img, label, idx, tbl):
-    for m in range(M):
-        h = 0
-        for n in range(N):
-            h += (1 if img[idx[m][n]] >= 128 else 0) << n
-        tbl[m][h][label] += 1
-
 class NTupleClassifier:
+    """
+    Use the ntuple method for classifying handwritten image data
+    """
 
     def __init__(self):
-        self.idx = None
-        self.tbl = None
+        self.idx = None #np.array of M modules that sample N pixels each
+        self.tbl = None #np.array that acts as an in-memory hash table that stores the times a given module seen each label
     
     def train(self, train_x, train_y):
+        """
+        train_x: the image data we read in from MNIST. Each row represents an image, which is represented as a flat array of pixels
+        train_y: the labels of each image we read in
+
+        * initialize self.idx by choosing M*N random pixels we will be sampling
+        * initalize self.tbl by zeroing out a big 3 dimensional np.array to store the label counts for each module
+
+        training the classifier means updating the table with our counts, which we'll later use to make predictions
+        """
         eprint("training...")
-        
+       
+        #the number of pixels in each image
         npixels = train_x.shape[1]
         
         #generate our random pixel indexes
@@ -60,24 +141,39 @@ class NTupleClassifier:
         #zero out an array for counts
         self.tbl = np.zeros((M,1<<N,L), int)
 
+        #for each image:
+        #   - check to see if, given our current table, we would properly classify the image.
+        #   - if we would not have classified the image correctly, update the table
+        # 
+        #Checking if we would have classified things correctly acts as a normalization. If we didn't do it, our predictions would be skewed
+        #toward the labels that happened to show up in our training data more often.
         for i in range(train_x.shape[0]):
             img = train_x[i]
-            actual = train_y[i]
+            actual = train_y[i] #the actual 
             prediction = _classify(img, self.idx, self.tbl)
             if actual != prediction:
                 _update_tbl(img,actual, self.idx, self.tbl)
        
     def test(self, test_x, test_y):
+        """
+        test_x: test image data we read in from MNIST
+        test_y: test label data
+
+        For each image in the test set, we'll attempt to classify it, and compare how we did with the actual label of the image.
+        We'll then print out a confusion matrix and our accuracy.
+        """
         eprint("testing...")
-     
-        #calculate the confusion matrix
+    
+        #classify each image
+        #populate the the confusion matrix,
         cm = np.zeros( (L,L), dtype=int)
         for i in range(test_x.shape[0]):
             img = test_x[i]
             actual = test_y[i]
             prediction = _classify(img, self.idx, self.tbl);
             cm[actual][prediction] += 1
-        
+       
+        #print the confusion matrix and accuracy
         print("Confusion Matrix:")
         row_format = "{:>8}" * (L + 1)
         print(row_format.format("", *range(L)))
@@ -104,7 +200,7 @@ def main():
     train_y = reader.read_labels(args.train_labels_file)
     model = NTupleClassifier()
     model.train(train_x, train_y)
-    
+
     eprint("reading in test data...")
     test_x = reader.read_img(args.test_images_file)
     test_y = reader.read_labels(args.test_labels_file)
