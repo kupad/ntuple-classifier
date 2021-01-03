@@ -1,6 +1,23 @@
 # N-tuple Classifier
 
-Here we uses the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data.
+Here we uses the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data. Executing the program will train
+a classifier, and print a confusion matrix using the testing data.
+
+## Requirements
+
+To run, you will need to install the [numpy](https://numpy.org/) and [numba](https://numba.pydata.org/) packages.
+
+You'll also need the [MNIST data](http://yann.lecun.com/exdb/mnist/), a copy of which I've checked into this repository.
+
+## To Execute
+
+The main program is  `mnist_ntuple.py`
+
+```
+$ python3 mnist_ntuple.py data/train-images-idx3-ubyte data/train-labels-idx1-ubyte data/t10k-images-idx3-ubyte data/t10k-labels-idx1-ubyte 
+```
+
+## Description
 
 The N-tuple classifier is pretty neat. It's relatively simple, potentially quite fast, and even with a naive implementation has an accuracy of around 91% 
 on the MNIST data. But it isn't very popular, and is not typically discussed in introductory data science material.
@@ -19,12 +36,6 @@ For more information on n-tuple classifiers:
 * [Bledsoe and Browning.  Pattern recognition and reading by machine.](https://dl.acm.org/doi/10.1145/1460299.1460326) - The original paper
 * http://www.theparticle.com/cs/bc/dsci/ntuple.pdf - Which this python implementation is based on
 * https://haralick.org/ML/ntuple_classifier_10_2_2020.pdf
-
-Requirements:
-To run, we require the [numpy](https://numpy.org/) and [numba](https://numba.pydata.org/) packages. I'm not too well versed in either, but using numba
-speeds things up significantly. On my computer, the program went from running in ~300 seconds -> ~ 1 second.
-
-You'll also need the [MNIST data](http://yann.lecun.com/exdb/mnist/), a copy of which I've checked into this repository.
 
 USAGE:
 ```
