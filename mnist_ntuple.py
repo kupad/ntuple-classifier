@@ -9,40 +9,18 @@
 #
 # get the dataset here: http://yann.lecun.com/exdb/mnist/
 
-import sys
 import argparse 
-
-#the key to speed:
 import numpy as np
 from numba import jit
+
+from mnist_reader import MNISTReader
+from utils import eprint
 
 #number of labels (0-9)
 L = 10
 
 M = 500 #num modules
 N = 10  #num pixels sampled per module
-
-def eprint(*args, **kwargs):
-    """print to stderr"""
-    print(*args, file=sys.stderr, **kwargs)
-
-def read_labels(fp):
-    """read label data file"""
-    labels = np.fromfile(fp, dtype=np.uint8,offset=2*4)
-    return labels 
-
-def read_img(fp):
-    """read image data file"""
-    fh = open(fp,'rb')
-    magic_num = bytes(fh.read(4))
-    nimg = int.from_bytes(fh.read(4), byteorder='big')
-    rows = int.from_bytes(fh.read(4), byteorder='big')
-    cols = int.from_bytes(fh.read(4), byteorder='big')
-    #eprint('nimg', nimg, 'rows', rows, 'cols', cols)
-    arr1d = np.fromfile(fh, dtype=np.uint8)
-    images = np.reshape(arr1d,(nimg,rows*cols))
-    fh.close()
-    return images 
 
 @jit(nopython=True)
 def _classify(img, idx, tbl):
@@ -120,14 +98,16 @@ def main():
     parser.add_argument("test_labels_file", help="file with the testing labels")
     args = parser.parse_args()
 
-    eprint("reading in data...")
-    train_x = read_img(args.train_images_file)
-    train_y = read_labels(args.train_labels_file)
-    test_x = read_img(args.test_images_file)
-    test_y = read_labels(args.test_labels_file)
-
+    eprint("reading in training data...")
+    reader = MNISTReader()
+    train_x = reader.read_img(args.train_images_file)
+    train_y = reader.read_labels(args.train_labels_file)
     model = NTupleClassifier()
     model.train(train_x, train_y)
+    
+    eprint("reading in test data...")
+    test_x = reader.read_img(args.test_images_file)
+    test_y = reader.read_labels(args.test_labels_file)
     model.test(test_x, test_y)
     
 if __name__ == '__main__':
