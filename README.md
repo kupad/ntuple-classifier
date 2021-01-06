@@ -1,11 +1,10 @@
 # N-tuple Classifier
 
-Here I use the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data. Executing the program will train
-a classifier, and print a confusion matrix using the testing data.
+Here I use the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data. The program will train the classifier using the training data, test the performance using the test data, and then summarize performance with a confusion matrix and will print out the accuracy. 
 
 ## Requirements
 
-To run, you will need to install the [numpy](https://numpy.org/) and [numba](https://numba.pydata.org/) packages.
+To run, you will need to install the [numpy](https://numpy.org/) and [numba](https://numba.pydata.org/) packages. This is for performance.
 
 You'll also need the [MNIST data](http://yann.lecun.com/exdb/mnist/), a copy of which I've checked into this repository.
 
@@ -52,7 +51,7 @@ optional arguments:
   -h, --help         show this help message and exit
 ```
 
-Here's an example:
+Here's an example run:
 ```
 $ python3 mnist_ntuple.py data/train-images-idx3-ubyte data/train-labels-idx1-ubyte data/t10k-images-idx3-ubyte data/t10k-labels-idx1-ubyte 
 Confusion Matrix:
