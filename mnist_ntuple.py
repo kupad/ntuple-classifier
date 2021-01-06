@@ -59,14 +59,14 @@ But, numba's jit compiling cannot be applied to methods in classes. So the funct
 """
 
 @jit(nopython=True)
-def _update_tbl(img, label, idx, tbl):
+def _update_count_tbl(img, label, idxs, count_tbl):
     """
     update table counts
 
     img: an np.array of pixel data. each pixel contains a value of 0-255
     label: what number this image represents
-    idx: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
-    tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
+    idxs: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
+    count_tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
    
     For each module,
         we store which sample pixels are active in a bitvector integer variable, 
@@ -76,18 +76,18 @@ def _update_tbl(img, label, idx, tbl):
     for m in range(M):
         h = 0 #bitvector of active pixels
         for n in range(N):
-            h += (1 if img[idx[m][n]] >= 128 else 0) << n
-        tbl[m][h][label] += 1
+            h += (1 if img[idxs[m][n]] >= 128 else 0) << n
+        count_tbl[m][h][label] += 1
 
 
 @jit(nopython=True)
-def _classify(img, idx, tbl):
+def _classify(img, idxs, count_tbl):
     """
     classify an image (is it 0,1...9?)
     
     img: an np.array of pixel data. each pixel contains 0-255
-    idx: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
-    tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
+    idxs: the indexes of the pixels we'll be sampling. There are M modules each sampling N pixels
+    count_tbl: an np.array. it's a giant in-memory hash table for storing the count data. (module#,active pixel hash, label) -> count 
     returns: label with most "votes"
     
     Each module will "vote" for the labels it thinks the image belongs to, contributing higher mumbers to the labels it matched on more often.
@@ -104,10 +104,10 @@ def _classify(img, idx, tbl):
     for m in range(M):
         h = 0
         for n in range(N):
-            h += (1 if img[idx[m][n]] >= 128 else 0) << n 
+            h += (1 if img[idxs[m][n]] >= 128 else 0) << n 
         
         for l in range(L):
-            votes[l] += tbl[m][h][l]
+            votes[l] += count_tbl[m][h][l]
     maxlabel = np.argmax(votes)
     return maxlabel
 
@@ -117,16 +117,16 @@ class NTupleClassifier:
     """
 
     def __init__(self):
-        self.idx = None #np.array of M modules that sample N pixels each
-        self.tbl = None #np.array that acts as an in-memory hash table that stores the times a given module seen each label
+        self.idxs = None #np.array of M modules that sample N pixels each
+        self.count_tbl = None #np.array that acts as an in-memory hash table that stores the times a given module seen each label
     
     def train(self, train_x, train_y):
         """
         train_x: the image data we read in from MNIST. Each row represents an image, which is represented as a flat array of pixels
         train_y: the labels of each image we read in
 
-        * initialize self.idx by choosing M*N random pixels we will be sampling
-        * initalize self.tbl by zeroing out a big 3 dimensional np.array to store the label counts for each module
+        * initialize self.idxs by choosing M*N random pixels we will be sampling
+        * initalize self.count_tbl by zeroing out a big 3 dimensional np.array to store the label counts for each module
 
         training the classifier means updating the table with our counts, which we'll later use to make predictions
         """
@@ -136,10 +136,10 @@ class NTupleClassifier:
         npixels = train_x.shape[1]
         
         #generate our random pixel indexes
-        self.idx = np.random.randint(0, high=npixels, size=(M,N))
+        self.idxs = np.random.randint(0, high=npixels, size=(M,N))
         
         #zero out an array for counts
-        self.tbl = np.zeros((M,1<<N,L), int)
+        self.count_tbl = np.zeros((M,1<<N,L), int)
 
         #for each image:
         #   - check to see if, given our current table, we would properly classify the image.
@@ -150,9 +150,9 @@ class NTupleClassifier:
         for i in range(train_x.shape[0]):
             img = train_x[i]
             actual = train_y[i] #the actual 
-            prediction = _classify(img, self.idx, self.tbl)
+            prediction = _classify(img, self.idxs, self.count_tbl)
             if actual != prediction:
-                _update_tbl(img,actual, self.idx, self.tbl)
+                _update_count_tbl(img,actual, self.idxs, self.count_tbl)
        
     def test(self, test_x, test_y):
         """
@@ -170,7 +170,7 @@ class NTupleClassifier:
         for i in range(test_x.shape[0]):
             img = test_x[i]
             actual = test_y[i]
-            prediction = _classify(img, self.idx, self.tbl);
+            prediction = _classify(img, self.idxs, self.count_tbl);
             cm[actual][prediction] += 1
        
         #print the confusion matrix and accuracy
