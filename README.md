@@ -1,6 +1,6 @@
 # N-tuple Classifier
 
-Here I use the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data. The program will train the classifier using the training data, test the performance using the test data, and then summarize performance with a confusion matrix and will print out the accuracy. 
+Use the N-tuple Classifier to classify handwritten images of numbers (0-9) using the MNIST handwritten digit data. The program will train the classifier using the training data, test the performance using the test data, and then summarize performance with a confusion matrix and will print out the accuracy. 
 
 ## Requirements
 
